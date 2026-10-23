@@ -1,0 +1,40 @@
+terminal max_bars = 100000  (requests stay below it)
+true UTC now      = 2026-10-23T16:20:23.362545+00:00
+server offset     = +3.0h
+
+pair     tf      bars      oldest  usable from  flat%  gaps/2y  cap
+-------------------------------------------------------------------
+EURUSD   M15    99000  2022-10-28         2023   0.0%      574  YES
+EURUSD   H1     55906  2006-12-04         2019   0.0%      142  -
+EURUSD   H4     16219  2006-12-04         2019   0.0%       34  -
+EURUSD   D1      5185  2006-12-04         2007   0.1%        4  -
+GBPUSD   M15    99000  2022-10-28         2023   0.0%      575  YES
+GBPUSD   H1     99000  2010-11-10         2011   0.0%      142  YES
+GBPUSD   H4     44906  1993-05-11         1999   0.0%       34  -
+GBPUSD   D1      8852  1993-05-11         1994   0.0%        4  -
+USDJPY   M15    99000  2022-10-28         2023   0.0%      575  YES
+USDJPY   H1     99000  2010-11-10         2011   0.0%      142  YES
+USDJPY   H4     50602  1971-01-03         1999   8.0%       34  -
+USDJPY   D1     14547  1971-01-03         1971  27.6%        4  -
+AUDUSD   M15    99000  2022-10-28         2023   0.0%      574  YES
+AUDUSD   H1     55906  2007-06-06         2019   0.0%      142  -
+AUDUSD   H4     16219  2007-06-06         2019   0.0%       34  -
+AUDUSD   D1      5185  2007-06-06         2008   0.0%        4  -
+USDCAD   M15    99000  2022-10-28         2023   0.0%      574  YES
+USDCAD   H1     99000  2010-11-10         2011   0.0%      142  YES
+USDCAD   H4     44935  1993-04-27         1999   0.0%       34  -
+USDCAD   D1      8877  1993-04-27         1994   0.0%        4  -
+USDCHF   M15    99000  2022-10-28         2023   0.0%      575  YES
+USDCHF   H1     99000  2010-11-10         2011   0.0%      142  YES
+USDCHF   H4     50562  1971-01-03         1999   7.9%       34  -
+USDCHF   D1     14504  1971-01-03         1971  27.6%        4  -
+NZDUSD   M15    99000  2022-10-27         2023   0.0%      582  YES
+NZDUSD   H1     55905  2007-06-07         2019   0.0%      142  -
+NZDUSD   H4     16219  2007-06-07         2019   0.0%       34  -
+NZDUSD   D1      5185  2007-06-07         2008   0.0%        4  -
+
+SUMMARY
+  M15  usable from 2023 across all pairs; unexplained gaps/2y: min 574, max 582
+  H1   usable from 2019 across all pairs; unexplained gaps/2y: min 142, max 142
+  H4   usable from 2019 across all pairs; unexplained gaps/2y: min 34, max 34
+  D1   usable from 2008 across all pairs; unexplained gaps/2y: min 4, max 4

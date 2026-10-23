@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from .clock import ServerClock, is_fx_market_closed
-from .contracts import Bar, MarketSnapshot, MarketState, SymbolSpec
+from .contracts import Bar, MarketSnapshot, MarketState, SymbolSpec  # noqa: F401
 
 
 @dataclass(frozen=True)
@@ -182,6 +182,38 @@ def gate_no_unexplained_gaps(bars: tuple[Bar, ...]) -> GateResult:
     return GateResult(name, True, f"{len(bars)} bars contiguous or weekend-explained")
 
 
+def gate_bar_resolution(
+    bars: tuple[Bar, ...], max_degenerate_ratio: float = 0.02
+) -> GateResult:
+    """Reject intraday series that are really daily data in an intraday wrapper.
+
+    Measured on USDJPYm# H4: bars back to 1971-01-03 with open==high==low==close
+    (357.73 flat) and tick_updates==1. Those are daily closes stuffed into H4
+    slots. A backtest reading them sees zero intrabar range, so stops never
+    trigger and slippage looks free — fantasy results.
+
+    Years before 1999 held under 500 H4 bars each where a contiguous year holds
+    ~1500, and EURUSDm# H1 held ~260 bars/year before 2018 against ~6200 after.
+    """
+    name = "bar_resolution"
+    if not bars:
+        return GateResult(name, False, "no bars to assess")
+
+    degenerate = sum(
+        1 for b in bars if b.high == b.low and b.tick_updates <= 1
+    )
+    ratio = degenerate / len(bars)
+    if ratio > max_degenerate_ratio:
+        return GateResult(
+            name,
+            False,
+            f"{degenerate}/{len(bars)} bars ({ratio:.1%}) are flat single-tick — "
+            f"series is lower resolution than its {bars[0].timeframe_seconds}s "
+            f"timeframe claims",
+        )
+    return GateResult(name, True, f"{degenerate}/{len(bars)} degenerate bars ({ratio:.1%})")
+
+
 def gate_margin_known(margin_required: float | None) -> GateResult:
     """Defect 5: symbol_info.margin_initial reads 0.0, which is not the margin.
 
@@ -249,6 +281,7 @@ def evaluate(
         gate_symbol_consistency(spec, execution_spec or spec),
         gate_completeness(len(snapshot.bars), expected_bars or len(snapshot.bars) or -1),
         gate_no_unexplained_gaps(snapshot.bars),
+        gate_bar_resolution(snapshot.bars),
         gate_margin_known(snapshot.margin_required),
         gate_quote_executable(snapshot.quote, spec, max_spread_pips),
     ]

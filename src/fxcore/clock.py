@@ -75,10 +75,20 @@ class ServerClock:
         return now_utc.astimezone(timezone.utc) - self.measured_at_utc
 
 
-def is_fx_market_closed(when_utc: datetime) -> bool:
-    """Approximate FX weekend closure in UTC.
+# The broker's week boundary moves with DST: its server runs UTC+2 in winter and
+# UTC+3 in summer, so the Friday close lands at 21:00 or 20:00 UTC depending on
+# the season. Measured on EURUSDm# H1 over two years, a hardcoded 21:00 boundary
+# misclassified 530 of 12386 bars (4.3%) as missing across DST weekends. The
+# window below spans both cases: it tolerates up to an hour of genuinely absent
+# data at each week edge rather than raise hundreds of false alarms.
+_FRIDAY_CLOSE_HOUR_UTC = 20
+_SUNDAY_OPEN_HOUR_UTC = 22
 
-    Deliberately approximate and documented as such: the real schedule is the
+
+def is_fx_market_closed(when_utc: datetime) -> bool:
+    """Conservative FX weekend closure in UTC.
+
+    Deliberately approximate and broker-specific: the real schedule is the
     broker's, varies by symbol, and shifts with DST. Used only to decide whether
     a bar gap needs explaining — never to authorise a trade.
     """
@@ -86,8 +96,8 @@ def is_fx_market_closed(when_utc: datetime) -> bool:
     weekday, hour = when_utc.weekday(), when_utc.hour  # Mon=0, Sun=6
     if weekday == 5:  # Saturday
         return True
-    if weekday == 4 and hour >= 21:  # Friday close
+    if weekday == 4 and hour >= _FRIDAY_CLOSE_HOUR_UTC:
         return True
-    if weekday == 6 and hour < 21:  # before Sunday open
+    if weekday == 6 and hour < _SUNDAY_OPEN_HOUR_UTC:
         return True
     return False

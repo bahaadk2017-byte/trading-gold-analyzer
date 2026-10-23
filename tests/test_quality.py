@@ -26,6 +26,7 @@ from fxcore.contracts import (
 )
 from fxcore.quality import (
     evaluate,
+    gate_bar_resolution,
     gate_clock_resolved,
     gate_completeness,
     gate_freshness,
@@ -275,6 +276,66 @@ class TestGaps:
     def test_non_monotonic_bars_are_rejected(self):
         bars = make_bars(5, TRUE_UTC)
         assert not gate_no_unexplained_gaps((bars[2], bars[1])).passed
+
+
+# --- fabricated low-resolution history -------------------------------------
+
+
+class TestBarResolution:
+    def test_flat_single_tick_bars_are_rejected(self):
+        """USDJPYm# H4 back to 1971: o==h==l==c==357.73 with tick_updates==1,
+        i.e. daily closes stuffed into H4 slots."""
+        fake = tuple(
+            Bar(
+                event_time_utc=datetime(1971, 1, 3, tzinfo=UTC) + timedelta(days=i),
+                timeframe_seconds=14400,
+                open=357.73, high=357.73, low=357.73, close=357.73,
+                tick_updates=1,
+            )
+            for i in range(20)
+        )
+        result = gate_bar_resolution(fake)
+        assert not result.passed
+        assert "flat single-tick" in result.detail
+
+    def test_genuine_bars_pass(self):
+        assert gate_bar_resolution(make_bars(100, TRUE_UTC)).passed
+
+    def test_a_few_quiet_bars_are_tolerated(self):
+        """A genuinely still bar at a holiday edge should not block trading."""
+        real = list(make_bars(100, TRUE_UTC))
+        real[0] = Bar(
+            event_time_utc=real[0].event_time_utc,
+            timeframe_seconds=3600,
+            open=1.12, high=1.12, low=1.12, close=1.12,
+            tick_updates=1,
+        )
+        assert gate_bar_resolution(tuple(real)).passed
+
+    def test_empty_series_is_rejected(self):
+        assert not gate_bar_resolution(()).passed
+
+
+# --- DST weekend boundary ---------------------------------------------------
+
+
+class TestWeekendBoundary:
+    def test_summer_friday_close_is_covered(self):
+        """Server runs UTC+3 in summer, so the week ends at 20:00 UTC. A 21:00
+        boundary misclassified 530 of 12386 EURUSDm# H1 bars as missing."""
+        assert is_fx_market_closed(datetime(2026, 10, 23, 20, 30, tzinfo=UTC))
+
+    def test_winter_friday_close_is_covered(self):
+        assert is_fx_market_closed(datetime(2026, 1, 9, 21, 30, tzinfo=UTC))
+
+    def test_sunday_evening_before_open_is_closed(self):
+        assert is_fx_market_closed(datetime(2026, 10, 25, 21, 30, tzinfo=UTC))
+
+    def test_midweek_is_open(self):
+        assert not is_fx_market_closed(datetime(2026, 10, 21, 12, 0, tzinfo=UTC))
+
+    def test_friday_midday_is_open(self):
+        assert not is_fx_market_closed(datetime(2026, 10, 23, 12, 0, tzinfo=UTC))
 
 
 # --- defect 4: tick_updates is not volume ----------------------------------

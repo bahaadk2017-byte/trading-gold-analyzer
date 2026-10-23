@@ -226,35 +226,44 @@ class MT5Source:
             notes=tuple(notes),
         )
 
-    def history_depth(self, broker_symbol: str, timeframe: str) -> dict[str, object]:
-        """Probe how much history actually exists, doubling until a request fails.
+    @property
+    def max_bars(self) -> int:
+        """The terminal's `Max bars in chart` setting. Measured: 100_000.
 
-        Defect 6: asking for 100_000 D1 bars returned 0 rather than an error, so
-        depth has to be discovered rather than assumed.
+        Requesting exactly this many, or more, returns zero bars rather than a
+        truncated series or an error (measured: 99_000 -> 99_000 bars,
+        100_000 -> 0, 200_000 -> 0). It is a cliff, not a ceiling.
+        """
+        term = self._mt5.terminal_info()
+        return int(getattr(term, "maxbars", 0)) if term else 0
+
+    def history_depth(self, broker_symbol: str, timeframe: str) -> dict[str, object]:
+        """Report how much history exists, staying under the silent-zero cliff.
+
+        A single request just below the cap returns everything available, so no
+        search is needed. An earlier doubling probe reported 65536 bars for every
+        M15 series — that was 2^16, the last power of two under the 100_000 cap,
+        not the real depth.
         """
         self._select(broker_symbol)
-        tf = self._tf_const(timeframe)
-        best, n = 0, 256
-        while n <= 1_048_576:
-            rates = self._mt5.copy_rates_from_pos(broker_symbol, tf, 0, n)
-            count = 0 if rates is None else len(rates)
-            if count <= best:
-                break
-            best, n = count, n * 2
-        rates = self._mt5.copy_rates_from_pos(broker_symbol, tf, 0, best or 1)
+        cap = self.max_bars
+        if cap <= 0:
+            raise MT5Error("terminal maxbars unavailable; cannot bound the request")
+        request = cap - 1000
+        rates = self._mt5.copy_rates_from_pos(
+            broker_symbol, self._tf_const(timeframe), 0, request
+        )
+        count = 0 if rates is None else len(rates)
         clock = self._clock
-        oldest = (
-            clock.to_utc(int(rates[0][0])) if (clock and rates is not None and len(rates)) else None
-        )
-        newest = (
-            clock.to_utc(int(rates[-1][0])) if (clock and rates is not None and len(rates)) else None
-        )
+        to_utc = clock.to_utc if clock else (lambda _e: None)
         return {
             "symbol": broker_symbol,
             "timeframe": timeframe,
-            "bars": best,
-            "oldest_utc": oldest,
-            "newest_utc": newest,
+            "bars": count,
+            "oldest_utc": to_utc(int(rates[0][0])) if count else None,
+            "newest_utc": to_utc(int(rates[-1][0])) if count else None,
+            "cap_limited": count >= request,  # true depth may exceed this
+            "terminal_max_bars": cap,
         }
 
     # --- internals ---------------------------------------------------------
