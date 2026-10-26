@@ -12,7 +12,10 @@
 | **المراحل المنجزة** | 0 تدقيق · 1 عقد البيانات والبوابات · 2 جودة التاريخ |
 | **التنفيذ الحقيقي** | ⛔ **غير مُصرَّح به ولا مُبنيّ.** لا يوجد كود إنشاء أوامر في المستودع |
 | **مصدر بيانات القرار** | MT5 / XM Global — قراءة فقط |
-| **الاختبارات** | 72 اختبار وحدة ناجح + تحقّق حيّ 28/28 |
+| **TradingView الرسمي** | ✅ متصل عبر OAuth — سياق H1 فقط، بلا وزن قرار |
+| **Kronos-small** | ✅ مثبت ونجح smoke على GPU — **الوزن صفر** حتى التقييم الكامل |
+| **الاختبارات** | 162 اختبار وحدة ناجح |
+| **لوحة التحكم** | ✅ `python -m uvicorn dashboard.app:app --port 8000` — RTL عربي، وضع داكن، قراءة فقط |
 
 > ⚠️ **حساب MT5 المتصل حقيقي** (XM Global، رافعة 1:1000، `trade_allowed: true`).
 > كل الكود هنا قراءة فقط، لكن انظر [سؤال 2 في التدقيق](docs/audit/2026-10-23-state-and-sources.md#2-أهم-نتيجة-في-هذا-التقرير-حسابك-الحقيقي-متصل-الآن)
@@ -33,17 +36,25 @@
 .claude/agents/         14 وكيلًا جاهزًا — 7 نظام + 7 تداول
 src/fxcore/
   contracts.py          عقد البيانات الموحّد + البصمة + حقل info_available_at
-  clock.py              قياس انحراف توقيت السيرفر عن UTC (قِيس: +3h)
+  clock.py              قياس انحراف توقيت السيرفر عن UTC
   quality.py            10 بوابات جودة. الافتراضي NO_TRADE
   analysis.py           تحليل متعدد الأطر، ثقة ≤0.70، حدود صريحة
+  enrichment.py         سياق TradingView مُتحقق + توقع Kronos بوزن صفر
   sources/mt5_source.py محوّل MT5 — قراءة فقط، بلا أي دالة أوامر
+dashboard/
+  app.py                خادم FastAPI — قراءة فقط، بلا endpoints تنفيذ
+  reader.py             قراءة runs/*.json وتطبيع البيانات للعرض
+  agents.py             قراءة frontmatter الوكلاء
+  news_cache.py         تغليف news.fetch() مع cache 5 دقائق
+  static/               index.html + style.css + app.js (RTL، dark mode)
 scripts/
   analyze.py            ⭐ نقطة الدخول الموحّدة
+  kronos_smoke.py       اختبار تثبيت النموذج بالمراجعات المثبتة
   verify_data_path.py   تحقّق حيّ من المسار كاملًا
   report_history_usability.py  قياس عمق التاريخ وجودته
 runs/                   سجلات التشغيل (JSON ببصمة)
 evidence/               مخرجات القياس الخام
-tests/                  72 اختبارًا، كل منها يثبّت عيبًا مُقاسًا
+tests/                  162 اختبارًا، كل منها يثبّت عيبًا أو حاجزًا
 ```
 
 ## التشغيل
@@ -52,9 +63,28 @@ tests/                  72 اختبارًا، كل منها يثبّت عيبً�
 python -u scripts/analyze.py
 ```
 
+لتضمين Kronos التجريبي من أحدث 512 شمعة H1 موثّقة من MT5:
+
+```bash
+.venv/kronos/Scripts/python.exe -I scripts/analyze.py EURUSD --kronos
+```
+
+يمكن تمرير ملخص `get_technicals_rating` الرسمي المُطبّع عبر
+`--tradingview-context <file.json>`؛ يظل السياق وصفيًا ولا يغيّر الانحياز أو الثقة.
+
 ```bash
 python -m pytest tests/ -q
 ```
+
+## لوحة التحكم
+
+```bash
+pip install fastapi "uvicorn[standard]"
+python -m uvicorn dashboard.app:app --reload --port 8000
+```
+
+ثم افتح <http://localhost:8000>. اللوحة RTL عربي، وضع داكن، قراءة فقط — لا زر تنفيذ.
+تحديث تلقائي بالضغط على «↻ تحديث».
 
 يتطلّب منصّة MT5 مفتوحة ومسجّلة الدخول. لا يحتاج أي مفتاح أو كلمة مرور.
 

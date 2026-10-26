@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentTelemetry",
+  "type": "object",
+  "properties": {
+    "agent_id": {
+      "type": "string"
+    },
+    "agent_name": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "IDLE",
+        "ANALYZING",
+        "WAITING",
+        "ERROR"
+      ]
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "performance_metrics": {
+      "type": "object",
+      "properties": {
+        "win_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "avg_profit_pips": {
+          "type": "number"
+        },
+        "total_trades": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "win_rate",
+        "avg_profit_pips",
+        "total_trades"
+      ]
+    },
+    "environment": {
+      "enum": [
+        "live",
+        "demo",
+        "simulated",
+        "backtest",
+        "experimental"
+      ]
+    }
+  },
+  "required": [
+    "agent_id",
+    "agent_name",
+    "status",
+    "timestamp_utc",
+    "environment"
+  ]
+}

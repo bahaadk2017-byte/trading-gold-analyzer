@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Strategy Deliberation Record",
+  "description": "Immutable record of role-based strategy assessments. Static, non-authoritative, read-only. NOT live agent communication.",
+  "type": "object",
+  "required": [
+    "record_id",
+    "created_at_utc",
+    "mode",
+    "is_live_agent_communication",
+    "non_authoritative",
+    "environment",
+    "strategy_ref",
+    "outcome"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "pattern": "^delib_[A-Za-z0-9_.-]+$",
+      "description": "Unique ID: delib_<strategy>_<version>_<pair>_<timestamp>"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when record was created"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["static_role_deliberation"],
+      "description": "Record type; only static_role_deliberation is valid"
+    },
+    "is_live_agent_communication": {
+      "type": "boolean",
+      "const": false,
+      "description": "MUST be false. These are NOT live agent messages."
+    },
+    "non_authoritative": {
+      "type": "boolean",
+      "const": true,
+      "description": "MUST be true. Assessments do not authorize trading or change risk limits."
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["live", "demo", "simulated", "backtest", "experimental"],
+      "description": "Environment context where deliberation occurred"
+    },
+    "disclaimer_ar": {
+      "type": "string",
+      "description": "Arabic disclaimer text shown to user"
+    },
+    "strategy_ref": {
+      "type": "object",
+      "required": ["name", "version", "pair", "timeframe"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Strategy name (e.g. 'ema_trend_follow')"
+        },
+        "version": {
+          "type": "string",
+          "description": "Strategy version (e.g. '1.0.0')"
+        },
+        "pair": {
+          "type": "string",
+          "description": "Currency pair (e.g. 'EURUSD')"
+        },
+        "timeframe": {
+          "type": "string",
+          "description": "Timeframe (e.g. 'H1')"
+        },
+        "hypothesis": {
+          "type": "string",
+          "description": "Strategy hypothesis / rationale"
+        },
+        "entry_rules": {
+          "type": "string",
+          "description": "Entry signal rules"
+        },
+        "exit_rules": {
+          "type": "string",
+          "description": "Exit signal rules"
+        },
+        "no_trade_conditions": {
+          "type": "string",
+          "description": "Conditions that block trading"
+        }
+      }
+    },
+    "backtest_ref": {
+      "type": "object",
+      "description": "Reference to the backtest run this deliberation concerns",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "pattern": "^bt_[A-Za-z0-9_.-]+$",
+          "description": "Backtest record ID"
+        },
+        "split": {
+          "type": "string",
+          "enum": ["is", "oos"],
+          "description": "In-sample or out-of-sample"
+        },
+        "data_fingerprint": {
+          "type": "string",
+          "description": "SHA-256 hash of immutable price data used"
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Summary metrics from backtest"
+        }
+      }
+    },
+    "role_assessments": {
+      "type": "array",
+      "description": "Per-role assessments; NOT messages, NOT live communication",
+      "items": {
+        "type": "object",
+        "required": ["role", "team", "assessment_type", "non_authoritative"],
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Role name (e.g. 'backtest-engineer', 'risk-guardian')"
+          },
+          "team": {
+            "type": "string",
+            "enum": ["system", "trading"],
+            "description": "Role team membership"
+          },
+          "source_definition": {
+            "type": "string",
+            "description": "Path to role definition file"
+          },
+          "assessment_type": {
+            "type": "string",
+            "enum": [
+              "constraint",
+              "evidence",
+              "question",
+              "uncertainty",
+              "non_binding_verdict",
+              "proposal_for_future_test"
+            ],
+            "description": "Type of assessment"
+          },
+          "text_ar": {
+            "type": "string",
+            "description": "Assessment text in Arabic"
+          },
+          "text_en": {
+            "type": "string",
+            "description": "Assessment text in English (optional)"
+          },
+          "references": {
+            "type": "array",
+            "description": "Data or evidence references",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["backtest", "data", "source", "constraint"],
+                  "description": "Reference type"
+                },
+                "record_id": {
+                  "type": "string",
+                  "description": "Referenced record ID (if applicable)"
+                },
+                "detail": {
+                  "type": "string",
+                  "description": "Reference detail or explanation"
+                }
+              }
+            }
+          },
+          "non_authoritative": {
+            "type": "boolean",
+            "const": true,
+            "description": "MUST be true. Assessment does not authorize anything."
+          }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["no_trade", "strategy_promoted", "execution_enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": [
+            "research_record_only",
+            "strategy_proposed_for_testing",
+            "strategy_approved_for_paper_trading",
+            "ready_for_live_consideration"
+          ],
+          "description": "Deliberation classification"
+        },
+        "no_trade": {
+          "type": "boolean",
+          "const": true,
+          "description": "MUST be true unless risk-guardian explicitly overrides in a separate authoritative record"
+        },
+        "strategy_promoted": {
+          "type": "boolean",
+          "const": false,
+          "description": "MUST be false. This record does not promote any strategy."
+        },
+        "execution_enabled": {
+          "type": "boolean",
+          "const": false,
+          "description": "MUST be false. Execution is disabled system-wide."
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "not": {
+    "required": ["sender", "recipient", "status", "latency_ms", "message_id", "correlation_id"]
+  }
+}

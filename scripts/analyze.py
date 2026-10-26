@@ -8,10 +8,14 @@ Usage:
     python -u scripts/analyze.py                      # all default pairs
     python -u scripts/analyze.py EURUSD GBPUSD        # specific pairs
     python -u scripts/analyze.py --json               # machine-readable
+    .venv/kronos/Scripts/python.exe -I scripts/analyze.py EURUSD --kronos
+    .venv/kronos/Scripts/python.exe -I scripts/analyze.py EURUSD --kronos \
+        --tradingview-context context.json
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from dataclasses import asdict
@@ -21,7 +25,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from fxcore.analysis import Bias, analyse
+from fxcore.analysis import analyse
+from fxcore.enrichment import (
+    CONTEXT_BARS,
+    KronosRunner,
+    TradingViewContext,
+    context_alignment,
+    load_tradingview_contexts,
+)
 from fxcore.quality import evaluate
 from fxcore.sources.mt5_source import MT5Source
 
@@ -32,9 +43,23 @@ BARS = 200
 MAX_SPREAD_PIPS = 3.0
 
 
-def run(pairs: list[str]) -> dict:
+def run(
+    pairs: list[str],
+    *,
+    use_kronos: bool = False,
+    tradingview_contexts: dict[str, TradingViewContext] | None = None,
+    kronos_device: str = "cuda:0",
+) -> dict:
     started = datetime.now(UTC)
     results: list[dict] = []
+    enrich = use_kronos or tradingview_contexts is not None
+    kronos_runner = None
+    kronos_load_error = None
+    if use_kronos:
+        try:
+            kronos_runner = KronosRunner(ROOT, device=kronos_device)
+        except Exception as exc:  # noqa: BLE001 - MT5 analysis must survive optional context
+            kronos_load_error = str(exc)
 
     with MT5Source() as src:
         account = src.account_summary()
@@ -55,18 +80,22 @@ def run(pairs: list[str]) -> dict:
             blocking: list[str] = []
             snapshot = None
 
+            h1_snapshot = None
             for tf in TIMEFRAMES:
-                snap = src.fetch(pair, tf, BARS, broker_symbol=broker)
+                requested = CONTEXT_BARS + 1 if use_kronos and tf == "H1" else BARS
+                snap = src.fetch(pair, tf, requested, broker_symbol=broker)
                 verdict = evaluate(
                     snap,
                     clock,
                     datetime.now(UTC),
-                    expected_bars=BARS,
+                    expected_bars=requested,
                     max_spread_pips=MAX_SPREAD_PIPS,
                 )
                 if verdict.tradable:
-                    bars_by_tf[tf] = snap.bars
+                    bars_by_tf[tf] = snap.bars[-BARS:]
                     snapshot = snap
+                    if tf == "H1":
+                        h1_snapshot = snap
                 else:
                     blocking.append(f"{tf}: {verdict.reason}")
 
@@ -99,6 +128,35 @@ def run(pairs: list[str]) -> dict:
                 gates_blocked=blocking,
                 data_fingerprint=snapshot.fingerprint,
             )
+
+            if enrich:
+                tv_context = (tradingview_contexts or {}).get(pair)
+                kronos = None
+                kronos_error = kronos_load_error
+                if kronos_runner is not None and h1_snapshot is not None:
+                    try:
+                        kronos = kronos_runner.forecast(h1_snapshot, datetime.now(UTC))
+                    except Exception as exc:  # noqa: BLE001 - optional context is non-blocking
+                        kronos_error = str(exc)
+                elif use_kronos and h1_snapshot is None:
+                    kronos_error = "H1 data did not pass every MT5 quality gate"
+
+                entry.update(
+                    tradingview=(
+                        {"status": "available", **asdict(tv_context)}
+                        if tv_context is not None
+                        else {"status": "unavailable"}
+                    ),
+                    kronos=(
+                        {"status": "available", **asdict(kronos)}
+                        if kronos is not None
+                        else {
+                            "status": "unavailable",
+                            **({"reason": kronos_error} if kronos_error else {}),
+                        }
+                    ),
+                    context_alignment=context_alignment(analysis, kronos, tv_context),
+                )
             results.append(entry)
 
     return {
@@ -149,6 +207,23 @@ def print_report(report: dict) -> None:
                 for g in r["gates_blocked"]:
                     print(f"    gate blocked {g}")
 
+    enriched = [r for r in analysed if "context_alignment" in r]
+    if enriched:
+        print("\n  CONTEXT ONLY — NO DECISION WEIGHT")
+        for r in enriched:
+            tv = r["tradingview"]
+            kronos = r["kronos"]
+            tv_read = tv.get("summary", "unavailable")
+            kronos_read = (
+                f"{kronos['direction']} {kronos['move_pips']:+.1f}p (weight=0)"
+                if kronos["status"] == "available"
+                else f"unavailable: {kronos.get('reason', 'not supplied')}"
+            )
+            print(
+                f"    {r['pair']}: TradingView={tv_read} | Kronos={kronos_read} "
+                f"| alignment={r['context_alignment']}"
+            )
+
     if blocked:
         print("\n  NO_TRADE")
         for r in blocked:
@@ -161,10 +236,26 @@ def print_report(report: dict) -> None:
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    pairs = [a.upper() for a in args] or DEFAULT_PAIRS
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pairs", nargs="*", type=str.upper)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--kronos", action="store_true")
+    parser.add_argument("--kronos-device", default="cuda:0")
+    parser.add_argument("--tradingview-context", type=Path)
+    args = parser.parse_args()
+    pairs = args.pairs or DEFAULT_PAIRS
+    tv_contexts = (
+        load_tradingview_contexts(args.tradingview_context, set(pairs))
+        if args.tradingview_context
+        else None
+    )
 
-    report = run(pairs)
+    report = run(
+        pairs,
+        use_kronos=args.kronos,
+        tradingview_contexts=tv_contexts,
+        kronos_device=args.kronos_device,
+    )
 
     runs = ROOT / "runs"
     runs.mkdir(exist_ok=True)
@@ -172,7 +263,7 @@ def main() -> int:
     path = runs / f"analysis_{stamp}.json"
     path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
 
-    if "--json" in sys.argv:
+    if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
         print_report(report)

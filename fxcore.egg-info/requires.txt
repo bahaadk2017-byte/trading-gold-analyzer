@@ -1,0 +1,7 @@
+MetaTrader5>=5.0
+feedparser
+certifi
+fastapi
+uvicorn[standard]
+pytest
+jsonschema

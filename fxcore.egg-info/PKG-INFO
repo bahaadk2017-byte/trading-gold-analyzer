@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: fxcore
+Version: 0.1.0
+Summary: Validated FX market data and quality gates
+Author: FX Trading System
+Requires-Dist: MetaTrader5>=5.0
+Requires-Dist: feedparser
+Requires-Dist: certifi
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]
+Requires-Dist: pytest
+Requires-Dist: jsonschema
+Dynamic: author
+Dynamic: requires-dist
+Dynamic: summary

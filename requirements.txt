@@ -1,0 +1,11 @@
+# Core analysis
+MetaTrader5==5.0.6180
+feedparser
+certifi
+
+# Dashboard server
+fastapi
+uvicorn[standard]
+
+# Testing
+pytest

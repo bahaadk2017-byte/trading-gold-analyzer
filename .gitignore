@@ -4,4 +4,5 @@ __pycache__/
 secrets/
 .env
 data/cache/
+data/h1/
 runs/

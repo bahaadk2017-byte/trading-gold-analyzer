@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة تحكم FX — قراءة فقط</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Alpine.js for reactivity, Chart.js for charts — both via CDN, no build step -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</head>
+<body>
+
+<div id="app" x-data="dashboard">
+
+  <!-- ── Top bar ──────────────────────────────────────────────── -->
+  <header class="topbar" role="banner">
+    <span class="topbar-title">📊 لوحة تحكم FX</span>
+
+    <!-- environment badge -->
+    <template x-if="systemStatus">
+      <span class="badge" :class="envBadgeClass(systemStatus.environment)">
+        <span x-text="systemStatus.environment ?? 'UNKNOWN'"></span>
+      </span>
+    </template>
+
+    <!-- real account warning -->
+    <template x-if="systemStatus?.is_real_account === true">
+      <span class="badge badge-live" title="الحساب الحقيقي متصل — التنفيذ معطّل">
+        ⚠ حساب حقيقي
+      </span>
+    </template>
+
+    <!-- execution status — always shown -->
+    <span class="exec-disabled" style="padding: 0.2rem 0.7rem; font-size: 0.75rem;">
+      ⛔ التنفيذ معطَّل — قراءة فقط
+    </span>
+
+    <span style="flex:1"></span>
+
+    <!-- last run time -->
+    <span style="font-size:0.78rem; color:var(--text-muted);"
+          x-text="systemStatus?.last_run_utc ? 'آخر تشغيل: ' + fmtUtc(systemStatus.last_run_utc) : ''">
+    </span>
+
+    <button class="btn-refresh" @click="refresh()" :disabled="loading"
+            aria-label="تحديث البيانات">
+      <span x-text="loading ? '⏳ جارٍ التحديث…' : '↻ تحديث'"></span>
+    </button>
+  </header>
+
+  <main class="main" role="main">
+
+    <!-- ── Connection error ──────────────────────────────────── -->
+    <template x-if="error">
+      <div class="card" role="alert" aria-live="assertive" style="border-color:var(--down);">
+        <div style="color:var(--down); font-weight:600;">⚠ خطأ في الاتصال</div>
+        <div style="font-size:0.85rem; margin-top:0.25rem;" x-text="error"></div>
+        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.5rem;">
+          تأكد من تشغيل الخادم: <code>python -m uvicorn dashboard.app:app --port 8000</code>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Account / system status ──────────────────────────── -->
+    <template x-if="systemStatus && systemStatus.status === 'ok'">
+      <section class="section" aria-label="حالة النظام">
+
+        <!-- Real account banner -->
+        <template x-if="systemStatus.is_real_account === true">
+          <div class="account-banner" role="alert">
+            <span style="font-size:1.2rem;">⚠</span>
+            <div>
+              <strong>حساب MT5 حقيقي متصل</strong>
+              — XM Global، رافعة 1:1000، <code x-text="systemStatus.server"></code>
+              <br>
+              <span style="font-size:0.8rem; color:var(--text-muted);">
+                كل الكود قراءة فقط. لا يوجد كود أوامر في النظام.
+              </span>
+            </div>
+          </div>
+        </template>
+
+        <!-- System kv row -->
+        <div class="card" style="padding: var(--gap-sm) var(--gap-md);">
+          <div style="display:flex; gap:var(--gap-lg); flex-wrap:wrap; font-size:0.82rem; align-items:center;">
+            <span>
+              <span style="color:var(--text-muted);">الوسيط:</span>
+              <span x-text="systemStatus.server ?? 'N/A'"></span>
+            </span>
+            <span>
+              <span style="color:var(--text-muted);">العملة:</span>
+              <span x-text="systemStatus.currency ?? 'N/A'"></span>
+            </span>
+            <span>
+              <span style="color:var(--text-muted);">الرافعة:</span>
+              <span x-text="systemStatus.leverage ? '1:' + systemStatus.leverage : 'N/A'"></span>
+            </span>
+            <span>
+              <span style="color:var(--text-muted);">انحراف الساعة:</span>
+              <span :style="systemStatus.clock_warning ? 'color:var(--warn)' : ''"
+                    x-text="formatOffset(systemStatus.server_offset_hours)
+                             + (systemStatus.clock_warning ? ' ⚠' : '')"></span>
+            </span>
+            <span x-show="systemStatus.clock_warning"
+                  style="color:var(--warn); font-size:0.8rem;"
+                  x-text="systemStatus.clock_warning"></span>
+            <span>
+              <span style="color:var(--text-muted);">الاتصال:</span>
+              <span :style="systemStatus.terminal_connected ? 'color:var(--up)' : 'color:var(--down)'"
+                    x-text="systemStatus.terminal_connected ? '✓ متصل' : '✗ منقطع'"></span>
+            </span>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <!-- DATA_MISSING state -->
+    <template x-if="systemStatus && systemStatus.status === 'DATA_MISSING'">
+      <div class="state-box">
+        <div class="state-icon">📭</div>
+        <div class="state-label" x-text="systemStatus.message"></div>
+        <div style="margin-top:var(--gap-sm); font-size:0.82rem; color:var(--text-dim);">
+          <code>python -u scripts/analyze.py</code>
+        </div>
+      </div>
+    </template>
+
+    <!-- ── Tabs ─────────────────────────────────────────────── -->
+    <nav class="tabs" role="tablist" aria-label="أقسام اللوحة">
+      <button class="tab-btn" :class="{active: tab==='pairs'}"
+              @click="onTabChange('pairs')" role="tab"
+              :aria-selected="tab==='pairs'">الأزواج</button>
+      <button class="tab-btn" :class="{active: tab==='gates'}"
+              @click="onTabChange('gates')" role="tab"
+              :aria-selected="tab==='gates'">جودة البيانات</button>
+      <button class="tab-btn" :class="{active: tab==='agents'}"
+              @click="onTabChange('agents')" role="tab"
+              :aria-selected="tab==='agents'">الفريق</button>
+      <button class="tab-btn" :class="{active: tab==='deliberations'}"
+              @click="onTabChange('deliberations')" role="tab"
+              :aria-selected="tab==='deliberations'">مداولات الاستراتيجية</button>
+      <button class="tab-btn" :class="{active: tab==='news'}"
+              @click="onTabChange('news')" role="tab"
+              :aria-selected="tab==='news'">الأخبار</button>
+      <button class="tab-btn" :class="{active: tab==='backtests'}"
+              @click="onTabChange('backtests')" role="tab"
+              :aria-selected="tab==='backtests'">الاختبارات</button>
+      <button class="tab-btn" :class="{active: tab==='history'}"
+              @click="onTabChange('history')" role="tab"
+              :aria-selected="tab==='history'">السجل</button>
+    </nav>
+
+    <!-- ── Loading ──────────────────────────────────────────── -->
+    <template x-if="loading">
+      <div class="loading" role="status" aria-live="polite" aria-label="جارٍ التحميل">
+        ⏳ جارٍ تحميل البيانات…
+      </div>
+    </template>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: PAIRS
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'pairs' && !loading" role="tabpanel" aria-label="تحليل الأزواج">
+
+      <!-- No run data -->
+      <template x-if="!latestRun">
+        <div class="state-box">
+          <div class="state-icon">📊</div>
+          <div class="state-label">لا توجد بيانات تحليل. شغّل <code>scripts/analyze.py</code> أولًا.</div>
+        </div>
+      </template>
+
+      <template x-if="latestRun">
+        <div class="section">
+
+          <!-- Pair cards grid -->
+          <div class="card-grid">
+            <template x-for="r in allPairs" :key="r.pair">
+              <article class="card pair-card"
+                       :class="{selected: selectedPair === r.pair}"
+                       @click="selectPair(r.pair)"
+                       :aria-label="'تحليل زوج ' + r.pair"
+                       tabindex="0"
+                       @keydown.enter="selectPair(r.pair)"
+                       @keydown.space.prevent="selectPair(r.pair)">
+
+                <div class="pair-header">
+                  <span class="pair-name" x-text="r.pair"></span>
+                  <div class="pair-meta">
+                    <!-- Decision badge -->
+                    <template x-if="r.decision === 'ANALYSED'">
+                      <span class="badge" :class="'badge-' + (r.bias ?? 'flat')"
+                            x-text="biasLabel(r.bias)"></span>
+                    </template>
+                    <template x-if="r.decision === 'NO_TRADE'">
+                      <span class="badge badge-no-trade">⛔ NO_TRADE</span>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Confidence bar (only when analysed) -->
+                <template x-if="r.decision === 'ANALYSED'">
+                  <div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-bottom:2px;">
+                      <span>ثقة</span>
+                      <span x-text="fmtConf(r.confidence)"></span>
+                    </div>
+                    <div class="conf-bar">
+                      <div class="conf-fill" :style="'width:' + ((r.confidence ?? 0)*100) + '%'"></div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Quick TF grid -->
+                <template x-if="r.timeframes">
+                  <div class="tf-grid" style="margin-top:var(--gap-sm);">
+                    <template x-for="tf in ['M15','H1','H4','D1']" :key="tf">
+                      <div class="tf-cell">
+                        <div class="tf-label" x-text="tf"></div>
+                        <div class="tf-bias" :class="biasClass(r.timeframes[tf]?.bias)"
+                             x-text="biasArrow(r.timeframes[tf]?.bias) || '?'"></div>
+                        <div class="tf-atr"
+                             x-text="r.timeframes[tf]?.atr_pips ? r.timeframes[tf].atr_pips + 'p' : ''"></div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- Spread -->
+                <template x-if="r.spread_pips != null">
+                  <div style="font-size:0.75rem; color:var(--text-muted); margin-top:var(--gap-xs);">
+                    سبريد: <span x-text="r.spread_pips + ' pip'"></span>
+                  </div>
+                </template>
+
+                <!-- NO_TRADE reason -->
+                <template x-if="r.decision === 'NO_TRADE' && r.reason">
+                  <div style="font-size:0.75rem; color:var(--down); margin-top:var(--gap-xs);"
+                       x-text="r.reason.slice(0, 120) + (r.reason.length > 120 ? '…' : '')"></div>
+                </template>
+
+              </article>
+            </template>
+          </div>
+
+          <!-- ── Detail panel ── -->
+          <template x-if="selectedResult">
+            <div class="detail-panel" role="region" :aria-label="'تفاصيل ' + selectedPair">
+              <div class="detail-title" x-text="selectedPair + ' — تفاصيل التحليل'"></div>
+
+              <!-- Broker symbol -->
+              <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:var(--gap-md);">
+                رمز الوسيط: <code x-text="selectedResult.broker_symbol ?? 'N/A'"></code>
+              </div>
+
+              <!-- Decision summary -->
+              <div class="detail-section">
+                <div class="kv-table">
+                  <span class="kv-key">القرار</span>
+                  <span class="kv-val">
+                    <span class="badge" :class="selectedResult.decision === 'ANALYSED'
+                          ? 'badge-' + (selectedResult.bias ?? 'flat') : 'badge-no-trade'"
+                          x-text="selectedResult.decision === 'ANALYSED'
+                                  ? biasLabel(selectedResult.bias)
+                                  : '⛔ NO_TRADE'"></span>
+                  </span>
+                  <template x-if="selectedResult.decision === 'ANALYSED'">
+                    <span class="kv-key">الثقة</span>
+                    <span class="kv-val" x-text="fmtConf(selectedResult.confidence) + ' (سقف النظام: 70%)'"></span>
+                    <span class="kv-key">السبريد</span>
+                    <span class="kv-val" x-text="(selectedResult.spread_pips ?? 'N/A') + ' pip'"></span>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Timeframe detail -->
+              <template x-if="selectedResult.timeframes">
+                <div class="detail-section">
+                  <div style="font-weight:600; font-size:0.88rem; margin-bottom:var(--gap-sm);">تحليل الأطر الزمنية</div>
+                  <div style="display:flex; flex-direction:column; gap:var(--gap-sm);">
+                    <template x-for="item in selectedTimeframes" :key="item.tf">
+                      <div class="card" style="padding:var(--gap-sm) var(--gap-md); background:var(--bg-surface);">
+                        <div style="display:flex; align-items:center; gap:var(--gap-md); flex-wrap:wrap;">
+                          <span style="font-weight:700; min-width:2.5rem;" x-text="item.tf"></span>
+                          <span class="badge" :class="'badge-' + (item.bias ?? 'flat')"
+                                x-text="biasLabel(item.bias)"></span>
+                          <span style="font-size:0.8rem; color:var(--text-muted);"
+                                x-text="item.slope_pips_per_bar != null
+                                         ? 'ميل: ' + (item.slope_pips_per_bar > 0 ? '+' : '') + item.slope_pips_per_bar.toFixed(2) + 'p/شمعة'
+                                         : ''"></span>
+                          <span style="font-size:0.8rem; color:var(--text-muted);"
+                                x-text="item.atr_pips != null ? 'ATR: ' + item.atr_pips + 'p' : ''"></span>
+                          <span style="font-size:0.8rem; color:var(--text-muted);"
+                                x-text="item.range_position != null
+                                         ? 'موقع النطاق: ' + Math.round(item.range_position * 100) + '%'
+                                         : ''"></span>
+                          <span style="font-size:0.8rem; color:var(--text-muted);"
+                                x-text="item.structure ?? ''"></span>
+                        </div>
+                        <!-- Evidence -->
+                        <template x-if="item.evidence?.length">
+                          <ul class="limit-list" style="margin-top:var(--gap-xs);">
+                            <template x-for="ev in item.evidence" :key="ev">
+                              <li x-text="ev"></li>
+                            </template>
+                          </ul>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Conflicts -->
+              <template x-if="selectedResult.conflicts?.length">
+                <div class="detail-section">
+                  <div style="font-weight:600; font-size:0.88rem; margin-bottom:var(--gap-sm); color:var(--warn);">
+                    ⚠ تعارضات
+                  </div>
+                  <ul class="limit-list">
+                    <template x-for="c in selectedResult.conflicts" :key="c">
+                      <li style="color:var(--warn);" x-text="c"></li>
+                    </template>
+                  </ul>
+                </div>
+              </template>
+
+              <!-- Context-only sources from the hardened read endpoint -->
+              <template x-if="contextLoading">
+                <div class="context-loading" role="status">جارٍ التحقق من سياق المصدر…</div>
+              </template>
+              <template x-if="pairContext?.tradingview?.status === 'available'">
+                <section class="context-panel" aria-label="مخطط TradingView — سياق فقط">
+                  <div class="context-panel-header">
+                    <div>
+                      <span class="badge badge-ctx">سياق فقط</span>
+                      <strong>TradingView الرسمي</strong>
+                      <span class="context-disclaimer">لا يؤثر في القرار</span>
+                    </div>
+                    <span class="context-meta" x-text="fmtUtc(pairContext.tradingview.retrieved_at_utc)"></span>
+                  </div>
+                  <iframe class="tradingview-frame" :src="pairContext.tradingview.embed_url"
+                          title="مخطط TradingView للرمز المحدد — سياق فقط"
+                          sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"
+                          loading="lazy"></iframe>
+                  <div class="context-facts">
+                    <span x-text="'الرمز: ' + pairContext.tradingview.symbol"></span>
+                    <span x-text="'الملخص: ' + pairContext.tradingview.summary"></span>
+                    <span x-text="'المتوسطات: ' + pairContext.tradingview.moving_averages"></span>
+                    <span>approved_for_decisions=false</span>
+                  </div>
+                </section>
+              </template>
+              <template x-if="pairContext && pairContext.tradingview.status !== 'available'">
+                <div class="ctx-strip" role="note">
+                  <span class="badge badge-ctx">سياق فقط</span>
+                  <span>TradingView: غير متاح أو لم يطابق التحقق الصارم.</span>
+                </div>
+              </template>
+
+              <template x-if="pairContext?.kronos?.status === 'available'">
+                <section class="context-panel kronos-panel" aria-label="توقع Kronos — تجريبي ووزنه صفر">
+                  <div class="context-panel-header">
+                    <div>
+                      <span class="badge badge-exp">تجريبي · وزن: 0</span>
+                      <strong>Kronos-small</strong>
+                      <span class="context-disclaimer">لا يؤثر في القرار</span>
+                    </div>
+                    <span class="context-meta" x-text="'أُصدر: ' + fmtUtc(pairContext.kronos.issued_at_utc)"></span>
+                  </div>
+                  <div class="kronos-grid">
+                    <div><span>إغلاق مرجعي</span><strong x-text="fmtMetric(pairContext.kronos.last_close, 5)"></strong></div>
+                    <div><span>إغلاق متوقع</span><strong x-text="fmtMetric(pairContext.kronos.forecast_close, 5)"></strong></div>
+                    <div><span>الحركة</span><strong x-text="fmtPips(pairContext.kronos.move_pips)"></strong></div>
+                    <div><span>الاتجاه</span><strong x-text="biasLabel(pairContext.kronos.direction)"></strong></div>
+                  </div>
+                  <div class="context-facts">
+                    <span>confidence intervals: غير متاحة من النموذج</span>
+                    <span x-text="'البصمة: ' + pairContext.kronos.data_fingerprint"></span>
+                    <span>approved_for_decisions=false</span>
+                  </div>
+                </section>
+              </template>
+              <template x-if="pairContext && pairContext.kronos.status !== 'available'">
+                <div class="exp-strip" role="note">
+                  <span class="badge badge-exp">تجريبي · وزن: 0</span>
+                  <span>Kronos: لا توجد توقعات مدققة لهذا التشغيل.</span>
+                </div>
+              </template>
+
+              <!-- Context alignment -->
+              <template x-if="selectedResult.context_alignment">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-top:var(--gap-sm);">
+                  توافق السياق:
+                  <span :class="{'bias-up':selectedResult.context_alignment==='agreement',
+                                  'bias-down':selectedResult.context_alignment==='disagreement'}"
+                        x-text="alignLabel(selectedResult.context_alignment)"></span>
+                  <span style="color:var(--text-dim); font-size:0.75rem;">— وصفي فقط، لا يغيّر التحليل</span>
+                </div>
+              </template>
+
+              <!-- System limits -->
+              <template x-if="selectedResult.limits?.length">
+                <div class="detail-section" style="margin-top:var(--gap-md);">
+                  <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:var(--gap-xs);">
+                    حدود هذا التحليل
+                  </div>
+                  <ul class="limit-list">
+                    <template x-for="lim in selectedResult.limits" :key="lim">
+                      <li x-text="lim"></li>
+                    </template>
+                  </ul>
+                </div>
+              </template>
+
+              <!-- Fingerprint -->
+              <template x-if="selectedResult.data_fingerprint">
+                <div style="margin-top:var(--gap-md);">
+                  <span style="font-size:0.75rem; color:var(--text-dim);">بصمة البيانات: </span>
+                  <span class="fingerprint" x-text="selectedResult.data_fingerprint"></span>
+                </div>
+              </template>
+
+            </div>
+          </template>
+
+        </div>
+      </template>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: GATES
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'gates' && !loading" role="tabpanel" aria-label="بوابات جودة البيانات">
+      <template x-if="!latestRun">
+        <div class="state-box"><div class="state-icon">🔍</div><div class="state-label">لا بيانات</div></div>
+      </template>
+      <template x-if="latestRun">
+        <div class="section">
+          <div class="card">
+            <p style="font-size:0.82rem; color:var(--text-muted); margin:0 0 var(--gap-md);">
+              النظام يعمل fail-closed: أي فشل في بوابة = NO_TRADE مع ذكر السبب.
+              اختر زوجًا من قائمة الأزواج لعرض نتائج بواباته، أو انظر ملخص كل الأزواج أدناه.
+            </p>
+
+            <!-- Per-pair gate summary table -->
+            <table class="gate-table" aria-label="نتائج بوابات جودة البيانات لكل زوج">
+              <thead>
+                <tr>
+                  <th scope="col">الزوج</th>
+                  <th scope="col">القرار</th>
+                  <th scope="col">بوابات فاشلة</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="r in allPairs" :key="r.pair">
+                  <tr>
+                    <td style="font-weight:600;" x-text="r.pair"></td>
+                    <td>
+                      <span class="badge"
+                            :class="r.decision==='ANALYSED' ? 'badge-ok' : 'badge-no-trade'"
+                            x-text="r.decision"></span>
+                    </td>
+                    <td style="font-size:0.8rem; color:var(--down);"
+                        x-text="r.gates_blocked?.length
+                                  ? r.gates_blocked.map(g=>g.split(':')[0].trim()).join('، ')
+                                  : (r.decision==='ANALYSED' ? '✓ جميعها ناجحة' : r.reason?.slice(0,80) ?? '—')">
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Gate description reference -->
+          <div class="card">
+            <div style="font-weight:600; font-size:0.88rem; margin-bottom:var(--gap-sm);">
+              دليل البوابات العشر
+            </div>
+            <table class="gate-table" aria-label="وصف بوابات الجودة">
+              <thead><tr><th scope="col">البوابة</th><th scope="col">ما تكتشفه</th></tr></thead>
+              <tbody>
+                <tr><td>clock_resolved</td><td>انحراف ساعة السيرفر عن UTC</td></tr>
+                <tr><td>freshness</td><td>بيانات قديمة (شمعة بعمر أكثر من 2.5× الإطار)</td></tr>
+                <tr><td>symbol_tradable</td><td>رمز الوسيط قابل للتداول فعلًا (trade_mode=FULL)</td></tr>
+                <tr><td>symbol_consistency</td><td>تطابق رمز التحليل ورمز التنفيذ</td></tr>
+                <tr><td>completeness</td><td>الشموع المُستلمة ≥ 95% من المطلوبة</td></tr>
+                <tr><td>no_unexplained_gaps</td><td>فجوات غير مفسّرة بإغلاق السوق</td></tr>
+                <tr><td>bar_resolution</td><td>شموع مسطّحة ذات tick واحد (دقة أقل من الإطار)</td></tr>
+                <tr><td>margin_known</td><td>الهامش محسوب من order_calc_margin (لا صفر)</td></tr>
+                <tr><td>source_approved</td><td>المصدر معتمد للقرار (MT5 فقط)</td></tr>
+                <tr><td>quote_executable</td><td>سعر bid/ask متاح والسبريد ضمن الحد</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: AGENTS
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'agents' && !loading" role="tabpanel" aria-label="فريق الوكلاء">
+      <template x-if="!agents.length">
+        <div class="loading" role="status">⏳ جارٍ تحميل الفريق…</div>
+      </template>
+      <template x-if="agents.length">
+        <div class="section">
+          <p style="font-size:0.82rem; color:var(--text-muted);">
+            14 وكيلًا جاهزًا — تعريفات Claude agents فقط، لا runtime ولا telemetry مباشر.
+          </p>
+
+          <!-- System team -->
+          <div>
+            <div class="section-title">فريق النظام (7)</div>
+            <div class="card-grid" style="margin-top:var(--gap-sm);">
+              <template x-for="a in agents.filter(a=>a.team==='system')" :key="a.name">
+                <div class="card" style="padding:var(--gap-sm) var(--gap-md);">
+                  <div style="font-weight:700; margin-bottom:4px;" x-text="a.name"></div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;"
+                       x-text="a.description"></div>
+                  <div style="font-size:0.75rem; color:var(--text-dim); margin-top:4px;"
+                       x-text="'أدوات: ' + a.tools"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Trading team -->
+          <div>
+            <div class="section-title" style="margin-top:var(--gap-md);">فريق التداول (7)</div>
+            <div class="card-grid" style="margin-top:var(--gap-sm);">
+              <template x-for="a in agents.filter(a=>a.team==='trading')" :key="a.name">
+                <div class="card" style="padding:var(--gap-sm) var(--gap-md);">
+                  <div style="font-weight:700; margin-bottom:4px;" x-text="a.name"></div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;"
+                       x-text="a.description"></div>
+                  <div style="font-size:0.75rem; color:var(--text-dim); margin-top:4px;"
+                       x-text="'أدوات: ' + a.tools"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="card" style="font-size:0.82rem; color:var(--text-muted);">
+            <strong>⚠ قيود مطلقة:</strong> لا وكيل يستطيع تعديل حدود المخاطر ·
+            لا وكيل يُرقّي استراتيجية · لا وكيل يُفعّل التنفيذ الحقيقي ·
+            risk-guardian له نقض مطلق لا يُستأنف.
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: DELIBERATIONS
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'deliberations' && !loading" role="tabpanel" aria-label="مداولات الاستراتيجية">
+      <template x-if="deliberationsLoading">
+        <div class="loading" role="status">⏳ جارٍ تحميل المداولات…</div>
+      </template>
+      <template x-if="!deliberationsLoading">
+        <div class="section">
+          <!-- Persistent disclaimer -->
+          <div class="card" style="font-size:0.82rem; color:var(--text-muted); border-left:3px solid var(--warn);">
+            <strong>⚠ سجل ثابت</strong> — ليس محادثة وكلاء حية · لا تصويت · لا ترقية استراتيجية ·
+            لا قرار تداول · لا إذن تنفيذ
+          </div>
+
+          <!-- Deliberations list -->
+          <template x-if="!deliberations.length">
+            <div class="card" style="text-align:center; padding:var(--gap-lg); color:var(--text-muted);">
+              لا توجد مداولات مسجّلة
+            </div>
+          </template>
+
+          <template x-if="deliberations.length">
+            <div style="overflow-x:auto; margin-top:var(--gap-md);">
+              <table class="gate-table" aria-label="قائمة المداولات">
+                <thead>
+                  <tr>
+                    <th scope="col">الاستراتيجية</th>
+                    <th scope="col">النسخة</th>
+                    <th scope="col">الزوج</th>
+                    <th scope="col">التقسيم</th>
+                    <th scope="col">البيئة</th>
+                    <th scope="col">التاريخ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="delib in deliberations" :key="delib.record_id">
+                    <tr @click="selectDeliberation(delib.record_id)"
+                        style="cursor:pointer; transition:background 150ms;"
+                        @mouseenter="$el.style.backgroundColor='var(--surface-hover)'"
+                        @mouseleave="$el.style.backgroundColor=''">
+                      <td x-text="delib.strategy_name || '—'"></td>
+                      <td x-text="delib.strategy_version || '—'"></td>
+                      <td x-text="delib.pair || '—'"></td>
+                      <td x-text="delib.split || '—'"></td>
+                      <td>
+                        <span class="badge" :class="envBadgeClass(delib.environment)"
+                              x-text="delib.environment || '—'"></span>
+                      </td>
+                      <td class="mono" style="font-size:0.75rem;" x-text="fmtUtc(delib.created_at_utc)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Deliberation detail view -->
+            <template x-if="selectedDeliberation">
+              <div style="margin-top:var(--gap-lg); border-top:1px solid var(--border); padding-top:var(--gap-lg);">
+                <h3 style="margin-bottom:var(--gap-md);">📋 تفاصيل المداولة</h3>
+
+                <!-- Strategy snapshot -->
+                <div class="card" style="margin-bottom:var(--gap-md);">
+                  <div style="font-weight:700; margin-bottom:var(--gap-sm);">استراتيجية</div>
+                  <div style="display:grid; grid-template-columns:auto 1fr; gap:var(--gap-md); font-size:0.9rem;">
+                    <div style="text-align:right; color:var(--text-muted);">الاسم:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.name || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">النسخة:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.version || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">الزوج:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.pair || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">الإطار الزمني:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.timeframe || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">الفرضية:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.hypothesis || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">قواعد الدخول:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.entry_rules || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">قواعد الخروج:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.exit_rules || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">شروط عدم التداول:</div>
+                    <div x-text="selectedDeliberation.strategy_ref?.no_trade_conditions || '—'"></div>
+                  </div>
+                </div>
+
+                <!-- Backtest reference -->
+                <div class="card" style="margin-bottom:var(--gap-md);">
+                  <div style="font-weight:700; margin-bottom:var(--gap-sm);">الاختبار الخلفي</div>
+                  <div style="display:grid; grid-template-columns:auto 1fr; gap:var(--gap-md); font-size:0.9rem;">
+                    <div style="text-align:right; color:var(--text-muted);">معرّف السجل:</div>
+                    <div class="mono" style="font-size:0.8rem;" x-text="selectedDeliberation.backtest_ref?.record_id || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">التقسيم:</div>
+                    <div x-text="selectedDeliberation.backtest_ref?.split || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">بصمة البيانات:</div>
+                    <div class="mono" style="font-size:0.8rem;" x-text="selectedDeliberation.backtest_ref?.data_fingerprint || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">المقاييس:</div>
+                    <div>
+                      <template x-if="selectedDeliberation.backtest_ref?.metrics">
+                        <div style="font-size:0.85rem;">
+                          <template x-for="(value, key) in selectedDeliberation.backtest_ref.metrics" :key="key">
+                            <div><strong x-text="key + ':'" style="margin-right:4px;"></strong><span x-text="value"></span></div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="!selectedDeliberation.backtest_ref?.metrics">
+                        <span>—</span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Role assessments -->
+                <div>
+                  <div style="font-weight:700; margin-bottom:var(--gap-sm);">تقييمات الأدوار</div>
+                  <template x-if="!selectedDeliberation.role_assessments?.length">
+                    <div class="card" style="color:var(--text-muted);">لا توجد تقييمات</div>
+                  </template>
+                  <template x-for="assessment in selectedDeliberation.role_assessments" :key="assessment.role">
+                    <div class="card" style="margin-bottom:var(--gap-md);">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:var(--gap-sm);">
+                        <div>
+                          <strong x-text="assessment.role"></strong>
+                          <span style="color:var(--text-muted); margin-right:var(--gap-sm);" x-text="'(' + assessment.team + ')'"></span>
+                        </div>
+                        <span class="badge" style="font-size:0.75rem; background:var(--surface); color:var(--text-muted);"
+                              x-text="assessment.assessment_type"></span>
+                      </div>
+                      <div style="color:var(--text-muted); margin-bottom:var(--gap-sm); line-height:1.5;"
+                           x-text="assessment.text_ar || assessment.text_en || '—'"></div>
+                      <div style="font-size:0.75rem; color:var(--text-dim);">
+                        ⓘ غير ملزم · لا يصرّح بالتنفيذ · لا يُرقّي الاستراتيجية
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Outcome summary -->
+                <div class="card" style="margin-top:var(--gap-md); border-left:3px solid var(--down);">
+                  <div style="font-weight:700; margin-bottom:var(--gap-sm);">النتيجة</div>
+                  <div style="display:grid; grid-template-columns:auto 1fr; gap:var(--gap-md); font-size:0.9rem;">
+                    <div style="text-align:right; color:var(--text-muted);">التصنيف:</div>
+                    <div x-text="selectedDeliberation.outcome?.classification || '—'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">عدم التداول:</div>
+                    <div x-text="selectedDeliberation.outcome?.no_trade ? '✓ نعم' : '✗ لا'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">الاستراتيجية مرقّاة:</div>
+                    <div x-text="selectedDeliberation.outcome?.strategy_promoted ? '✓ نعم' : '✗ لا'"></div>
+
+                    <div style="text-align:right; color:var(--text-muted);">التنفيذ مفعّل:</div>
+                    <div x-text="selectedDeliberation.outcome?.execution_enabled ? '✓ نعم' : '✗ لا'"></div>
+                  </div>
+                </div>
+
+                <button @click="selectedDeliberation = null" style="margin-top:var(--gap-md); padding:var(--gap-sm) var(--gap-md); border:1px solid var(--border); border-radius:4px; background:var(--surface); cursor:pointer;">
+                  إغلاق التفاصيل
+                </button>
+              </div>
+            </template>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: NEWS
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'news' && !loading" role="tabpanel" aria-label="الأخبار">
+      <template x-if="newsLoading">
+        <div class="loading" role="status">⏳ جارٍ جلب الأخبار من المصادر الرسمية…</div>
+      </template>
+      <template x-if="!newsLoading && !news">
+        <div class="state-box"><div class="state-icon">📰</div><div class="state-label">لم تُحمَّل بعد</div></div>
+      </template>
+      <template x-if="news && !newsLoading">
+        <div class="section">
+
+          <!-- Classification notice -->
+          <div class="card" style="border-color:var(--untrusted); padding:var(--gap-sm) var(--gap-md);">
+            <span class="badge badge-untrusted">بيانات غير موثوقة</span>
+            <span style="font-size:0.82rem; margin-right:var(--gap-sm);">
+              كل عنصر هنا مصنّف <strong>untrusted</strong> — وقائع مع رابط ووقت نشر، ليست توصيات ولا أوامر.
+            </span>
+          </div>
+
+          <!-- Unmonitored currencies warning -->
+          <template x-if="news.unmonitored?.length">
+            <div class="card" style="border-color:var(--warn);">
+              <div style="font-weight:600; color:var(--warn); margin-bottom:var(--gap-xs);">
+                ⚠ عملات بدون تغطية أخبار رسمية
+              </div>
+              <template x-for="gap in news.unmonitored" :key="gap.currency">
+                <div style="font-size:0.82rem; margin-top:4px;">
+                  <span class="badge badge-warn" x-text="gap.currency"></span>
+                  <span style="color:var(--text-muted); margin-right:var(--gap-sm);" x-text="gap.reason"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- Failed feeds -->
+          <template x-if="news.failed_feeds?.length">
+            <div class="card" style="border-color:var(--down); font-size:0.82rem;">
+              <div style="color:var(--down); font-weight:600; margin-bottom:4px;">SOURCE_ERROR — مصادر فاشلة</div>
+              <template x-for="f in news.failed_feeds" :key="f">
+                <div style="color:var(--text-muted);" x-text="f"></div>
+              </template>
+            </div>
+          </template>
+
+          <!-- News items -->
+          <div class="card">
+            <template x-if="!news.items?.length">
+              <div class="state-box" style="padding:var(--gap-md);">
+                <div class="state-icon">📭</div>
+                <div class="state-label">لا توجد أخبار حديثة من المصادر المتاحة</div>
+              </div>
+            </template>
+            <template x-for="item in news.items" :key="item.url">
+              <div class="news-item">
+                <div class="news-title">
+                  <a :href="item.url" target="_blank" rel="noopener noreferrer"
+                     x-text="item.title"></a>
+                </div>
+                <div class="news-meta">
+                  <span x-text="item.institution"></span>
+                  <span class="badge badge-warn" x-text="item.currency" style="font-size:0.7rem; padding:0.1rem 0.4rem;"></span>
+                  <span x-text="fmtUtc(item.published_at_utc)"></span>
+                  <span class="badge badge-untrusted" style="font-size:0.7rem; padding:0.1rem 0.4rem;">untrusted</span>
+                </div>
+                <template x-if="item.injection_flags?.length">
+                  <div class="news-flag" x-text="'⚑ مُعلَّم: ' + item.injection_flags.join(', ')"></div>
+                </template>
+              </div>
+            </template>
+          </div>
+
+        </div>
+      </template>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: BACKTESTS
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'backtests' && !loading" role="tabpanel" aria-label="اختبارات الاستراتيجية">
+      <div class="section">
+        <div class="card backtest-notice" role="note">
+          <span class="badge badge-disabled">محاكاة فقط</span>
+          <span>هذه النتائج تطويرية داخل العينة، بعد تقدير السبريد والانزلاق والمبيت. لا تُرقّى أي استراتيجية ولا تتغير حدود المخاطر هنا.</span>
+        </div>
+
+        <template x-if="backtestsLoading">
+          <div class="loading" role="status">⏳ جارٍ تحميل نتائج الاختبارات…</div>
+        </template>
+        <template x-if="backtestError">
+          <div class="card" role="alert" style="border-color:var(--down);" x-text="backtestError"></div>
+        </template>
+        <template x-if="!backtestsLoading && !backtestError && !backtestPairs.length">
+          <div class="state-box">
+            <div class="state-icon">📈</div>
+            <div class="state-label">لا توجد اختبارات محفوظة بعد. شغّل <code>scripts/strategy_pipeline.py</code>.</div>
+          </div>
+        </template>
+
+        <template x-if="backtestPairs.length">
+          <div class="backtest-layout">
+            <section class="card" aria-label="اختيار الزوج">
+              <div class="section-title">نتائج الفريق حسب الزوج</div>
+              <div class="backtest-pair-list">
+                <template x-for="run in backtestPairs" :key="run.record_id">
+                  <button class="backtest-pair-btn" type="button"
+                          :class="{active: selectedBacktest?.record_id === run.record_id}"
+                          @click="selectBacktest(run)"
+                          :aria-pressed="selectedBacktest?.record_id === run.record_id">
+                    <span class="backtest-pair-name" x-text="run.pair"></span>
+                    <span class="backtest-pair-net"
+                          :class="run.total_net_pips >= 0 ? 'bias-up' : 'bias-down'"
+                          x-text="fmtPips(run.total_net_pips)"></span>
+                    <span class="backtest-pair-meta"
+                          x-text="run.n_trades + ' صفقة · PF ' + fmtMetric(run.profit_factor)"></span>
+                  </button>
+                </template>
+              </div>
+            </section>
+
+            <template x-if="selectedBacktest">
+              <section class="card backtest-detail" aria-label="تفاصيل اختبار الاستراتيجية">
+                <div class="backtest-header">
+                  <div>
+                    <h2 class="backtest-title" x-text="selectedBacktest.pair + ' — ' + selectedBacktest.strategy"></h2>
+                    <p class="backtest-subtitle" x-text="'الإصدار ' + selectedBacktest.version + ' · بيانات H1 · ' + selectedBacktest.n_bars.toLocaleString() + ' شمعة'"></p>
+                  </div>
+                  <span class="badge badge-disabled">IN-SAMPLE · تطوير</span>
+                </div>
+
+                <div class="backtest-metrics" aria-label="مقاييس الاختبار">
+                  <div class="metric-card"><span>الصافي</span><strong :class="selectedBacktest.total_net_pips >= 0 ? 'bias-up' : 'bias-down'" x-text="fmtPips(selectedBacktest.total_net_pips)"></strong></div>
+                  <div class="metric-card"><span>عدد الصفقات</span><strong x-text="selectedBacktest.n_trades"></strong></div>
+                  <div class="metric-card"><span>معدل الفوز</span><strong x-text="fmtConf(selectedBacktest.win_rate)"></strong></div>
+                  <div class="metric-card"><span>أقصى تراجع</span><strong class="bias-down" x-text="fmtPips(-selectedBacktest.max_drawdown_pips)"></strong></div>
+                  <div class="metric-card"><span>Sharpe</span><strong x-text="fmtMetric(selectedBacktest.sharpe, 3)"></strong></div>
+                  <div class="metric-card"><span>Profit factor</span><strong x-text="fmtMetric(selectedBacktest.profit_factor)"></strong></div>
+                </div>
+
+                <figure class="equity-figure" aria-labelledby="equity-title">
+                  <figcaption>
+                    <strong id="equity-title">منحنى صافي النقاط التراكمي</strong>
+                    <span>مرّر المؤشر على المنحنى لعرض الصفقة؛ الجدول أدناه بديل قابل للقراءة.</span>
+                  </figcaption>
+                  <div class="equity-canvas-wrap"><canvas x-ref="equityChart" aria-label="منحنى صافي النقاط التراكمي"></canvas></div>
+                </figure>
+
+                <details class="backtest-table-details">
+                  <summary>عرض آخر 20 صفقة كجدول قابل للقراءة</summary>
+                  <div class="table-scroll">
+                    <table class="run-table" aria-label="آخر صفقات الاختبار">
+                      <thead><tr><th scope="col">الخروج</th><th scope="col">الاتجاه</th><th scope="col">السبب</th><th scope="col">الإجمالي</th><th scope="col">الكلفة</th><th scope="col">الصافي</th></tr></thead>
+                      <tbody>
+                        <template x-for="trade in selectedBacktest.trades.slice(-20).reverse()" :key="trade.exit_time + trade.entry_time">
+                          <tr>
+                            <td x-text="fmtUtc(trade.exit_time)"></td>
+                            <td x-text="trade.direction"></td>
+                            <td x-text="trade.exit_reason"></td>
+                            <td x-text="fmtPips(trade.gross_pips)"></td>
+                            <td x-text="fmtPips(-trade.cost_pips)"></td>
+                            <td :class="trade.net_pips >= 0 ? 'bias-up' : 'bias-down'" x-text="fmtPips(trade.net_pips)"></td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+
+                <p class="backtest-provenance">
+                  بصمة البيانات: <code x-text="selectedBacktest.data_fingerprint"></code> ·
+                  <span x-text="selectedBacktest.cost_note"></span>
+                </p>
+              </section>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: HISTORY
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'history' && !loading" role="tabpanel" aria-label="سجل التشغيلات">
+      <div class="section">
+        <template x-if="!runList.length">
+          <div class="state-box">
+            <div class="state-icon">📋</div>
+            <div class="state-label">لا سجلات. شغّل <code>scripts/analyze.py</code> أولًا.</div>
+          </div>
+        </template>
+        <template x-if="runList.length">
+          <div class="card" style="overflow-x:auto;">
+            <table class="run-table" aria-label="سجل التشغيلات">
+              <thead>
+                <tr>
+                  <th scope="col">التوقيت (UTC)</th>
+                  <th scope="col">البيئة</th>
+                  <th scope="col">الأزواج</th>
+                  <th scope="col">مُحلَّل</th>
+                  <th scope="col">NO_TRADE</th>
+                  <th scope="col">انحراف الساعة</th>
+                  <th scope="col">record_id</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="run in runList" :key="run.record_id">
+                  <tr>
+                    <td x-text="fmtUtc(run.started_utc)"></td>
+                    <td>
+                      <span class="badge" :class="envBadgeClass(run.environment)"
+                            x-text="run.environment ?? 'UNKNOWN'"></span>
+                    </td>
+                    <td x-text="run.pair_count ?? '—'"></td>
+                    <td style="color:var(--up);" x-text="run.analysed_count ?? '—'"></td>
+                    <td style="color:var(--down);" x-text="run.no_trade_count ?? '—'"></td>
+                    <td :style="run.clock_warning ? 'color:var(--warn)' : ''"
+                        x-text="formatOffset(run.server_offset_hours)
+                                 + (run.clock_warning ? ' ⚠' : '')"></td>
+                    <td class="mono" style="font-size:0.75rem;" x-text="run.record_id"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer style="padding:var(--gap-sm) var(--gap-lg); font-size:0.75rem; color:var(--text-dim);
+                 border-top:1px solid var(--border); text-align:center;">
+    نظام قيد البناء · قراءة وتحليل فقط · لا يوجد كود تنفيذ أوامر ·
+    المرحلة الحالية: 0–2 مكتملة · التنفيذ الحقيقي يتطلب موافقة صريحة منفصلة
+  </footer>
+
+</div><!-- #app -->
+</body>
+</html>
