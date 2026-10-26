@@ -65,7 +65,7 @@ class GoldLiveAnalyzer:
             },
             "levels": {
                 "support": [
-                    {"price": 4015.0, "strength": "medium", "type": "recent_low"},
+                    {"price": 4015.0, "strength": "strong", "type": "recent_low"},
                     {"price": 4010.0, "strength": "vpoc", "type": "vpoc"},
                     {"price": 4005.0, "strength": "strong", "type": "vpoc"},
                 ],
@@ -100,15 +100,137 @@ class GoldLiveAnalyzer:
                     "status": "PENDING",
                 },
             ],
-            "technicals": {
-                "rsi": 42.5,
-                "macd": -2.1,
-                "stoch_k": 35.2,
-                "stoch_d": 42.8,
-                "cci": -45.3,
-                "adx": 28.5,
-            },
+            "technicals": self._calculate_technicals_from_bars(bars),
         }
+
+    def _calculate_technicals_from_bars(self, bars: list[dict]) -> dict[str, float]:
+        """Calculate technical indicators from bar data."""
+        if len(bars) < 14:
+            return {
+                "rsi": 50,
+                "macd": 0,
+                "stoch_k": 50,
+                "stoch_d": 50,
+                "cci": 0,
+                "adx": 0,
+            }
+
+        closes = [b["c"] for b in bars]
+
+        # Calculate RSI (14)
+        rsi = self._calculate_rsi(closes, 14)
+
+        # Calculate MACD
+        macd = self._calculate_macd(closes)
+
+        # Calculate Stochastic
+        stoch_k, stoch_d = self._calculate_stochastic(bars, 14)
+
+        # Calculate CCI
+        cci = self._calculate_cci(bars, 20)
+
+        # Calculate ADX
+        adx = self._calculate_adx(bars, 14)
+
+        return {
+            "rsi": round(rsi, 2),
+            "macd": round(macd, 2),
+            "stoch_k": round(stoch_k, 2),
+            "stoch_d": round(stoch_d, 2),
+            "cci": round(cci, 2),
+            "adx": round(adx, 2),
+        }
+
+    def _calculate_rsi(self, closes: list[float], period: int = 14) -> float:
+        """Calculate RSI indicator."""
+        if len(closes) < period + 1:
+            return 50.0
+
+        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [d if d > 0 else 0 for d in deltas]
+        losses = [-d if d < 0 else 0 for d in deltas]
+
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+
+        if avg_loss == 0:
+            return 100.0 if avg_gain > 0 else 50.0
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def _calculate_macd(self, closes: list[float]) -> float:
+        """Calculate MACD line."""
+        if len(closes) < 26:
+            return 0.0
+
+        ema12 = self._calculate_ema(closes, 12)
+        ema26 = self._calculate_ema(closes, 26)
+        return ema12 - ema26
+
+    def _calculate_ema(self, data: list[float], period: int) -> float:
+        """Calculate EMA."""
+        if len(data) < period:
+            return sum(data) / len(data)
+
+        multiplier = 2 / (period + 1)
+        ema = sum(data[:period]) / period
+
+        for value in data[period:]:
+            ema = (value - ema) * multiplier + ema
+
+        return ema
+
+    def _calculate_stochastic(self, bars: list[dict], period: int = 14) -> tuple[float, float]:
+        """Calculate Stochastic %K and %D."""
+        if len(bars) < period:
+            return 50.0, 50.0
+
+        lows = [b["l"] for b in bars[-period:]]
+        highs = [b["h"] for b in bars[-period:]]
+        close = bars[-1]["c"]
+
+        lowest = min(lows)
+        highest = max(highs)
+
+        if highest == lowest:
+            return 50.0, 50.0
+
+        k = 100 * (close - lowest) / (highest - lowest)
+        d = k  # Simplified, normally would be 3-period SMA of K
+
+        return k, d
+
+    def _calculate_cci(self, bars: list[dict], period: int = 20) -> float:
+        """Calculate Commodity Channel Index."""
+        if len(bars) < period:
+            return 0.0
+
+        typical_prices = [(b["h"] + b["l"] + b["c"]) / 3 for b in bars[-period:]]
+        sma = sum(typical_prices) / period
+        mad = sum(abs(p - sma) for p in typical_prices) / period
+
+        if mad == 0:
+            return 0.0
+
+        cci = (typical_prices[-1] - sma) / (0.015 * mad)
+        return cci
+
+    def _calculate_adx(self, bars: list[dict], period: int = 14) -> float:
+        """Simplified ADX calculation."""
+        if len(bars) < period + 1:
+            return 0.0
+
+        # Simplified: based on high-low range
+        ranges = [b["h"] - b["l"] for b in bars[-period:]]
+        avg_range = sum(ranges) / period
+
+        # Higher ADX when ranges are larger and consistent
+        variance = sum((r - avg_range) ** 2 for r in ranges) / period
+        adx = min(100, 20 + (avg_range * 10))
+
+        return adx
 
     def should_refresh(self) -> bool:
         """Check if cache should be refreshed."""
