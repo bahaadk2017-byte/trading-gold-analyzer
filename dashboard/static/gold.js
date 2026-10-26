@@ -19,6 +19,8 @@ const goldAnalyzer = () => ({
   loading: false,
   isLive: true,
   lastUpdate: new Date(),
+  selectedPair: 'XAUUSD',
+  availablePairs: ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'],
   showChart: true,
   showTechnicals: true,
   showHistory: false,

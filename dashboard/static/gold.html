@@ -16,6 +16,11 @@
   <!-- ── Top Bar ──────────────────────────────────────────────── -->
   <header class="topbar">
     <div class="topbar-left">
+      <select x-model="selectedPair" style="background: transparent; color: #FFD700; border: 1px solid #FFD700; padding: 0.4rem 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; min-width: 100px;">
+        <template x-for="pair in availablePairs" :key="pair">
+          <option :value="pair" x-text="pair"></option>
+        </template>
+      </select>
       <span class="topbar-title">🥇 تحليل الذهب المباشر</span>
       <span class="badge badge-live" x-show="isLive">● مباشر</span>
     </div>
