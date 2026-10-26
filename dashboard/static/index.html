@@ -144,6 +144,9 @@
       <button class="tab-btn" :class="{active: tab==='news'}"
               @click="onTabChange('news')" role="tab"
               :aria-selected="tab==='news'">الأخبار</button>
+      <button class="tab-btn" :class="{active: tab==='charts'}"
+              @click="onTabChange('charts')" role="tab"
+              :aria-selected="tab==='charts'">الشارت</button>
       <button class="tab-btn" :class="{active: tab==='backtests'}"
               @click="onTabChange('backtests')" role="tab"
               :aria-selected="tab==='backtests'">الاختبارات</button>
@@ -551,6 +554,35 @@
           </div>
         </div>
       </template>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: CHARTS
+    ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'charts' && !loading" role="tabpanel" aria-label="الشارت">
+      <div class="section">
+        <div style="margin-bottom:var(--gap-md);">
+          <label style="display:block; margin-bottom:var(--gap-sm); font-weight:700;">اختر الزوج:</label>
+          <div style="display:flex; gap:var(--gap-sm); flex-wrap:wrap;">
+            <template x-for="pair in ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD', 'ETHUSD']" :key="pair">
+              <button @click="chartPair = pair"
+                      :class="{active: chartPair === pair}"
+                      style="padding:var(--gap-sm) var(--gap-md); border:1px solid var(--border); border-radius:4px; background:var(--surface); cursor:pointer;"
+                      x-text="pair"></button>
+            </template>
+          </div>
+        </div>
+
+        <div style="height:500px; border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+          <iframe :src="'https://www.tradingview.com/chart/?symbol=' + chartPair + '&interval=D&theme=dark'"
+                  style="width:100%; height:100%; border:none;"
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"></iframe>
+        </div>
+
+        <div style="margin-top:var(--gap-md); font-size:0.82rem; color:var(--text-muted);">
+          ℹ️ CONTEXT ONLY — هذا الشارت للمراجعة فقط، ليس للتداول المباشر
+        </div>
+      </div>
     </div>
 
     <!-- ════════════════════════════════════════════════════════

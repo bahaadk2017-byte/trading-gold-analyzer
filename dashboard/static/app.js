@@ -84,6 +84,7 @@ document.addEventListener('alpine:init', () => {
     selectedDeliberation: null,
     deliberationsLoading: false,
     deliberationsError: null,
+    chartPair: 'EURUSD',
 
     // computed helpers exposed to template
     fmtUtc,
