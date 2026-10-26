@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تحليل الذهب المباشر - Gold Live Analyzer</title>
+  <link rel="stylesheet" href="/static/gold.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="/static/gold.js"></script>
+</head>
+<body>
+
+<div id="app" x-data="goldAnalyzer" class="app">
+
+  <!-- ── Top Bar ──────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-title">🥇 تحليل الذهب المباشر</span>
+      <span class="badge badge-live" x-show="isLive">● مباشر</span>
+    </div>
+
+    <div class="topbar-right">
+      <span class="price-display" x-text="`السعر: $${currentPrice.toFixed(2)}`"></span>
+      <button class="btn-refresh" @click="refresh()" :disabled="loading">
+        <span x-text="loading ? '⏳ جارٍ...' : '↻'"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Main Content ──────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- Error Alert -->
+    <template x-if="error">
+      <div class="alert alert-error" role="alert">
+        <span style="font-weight: 600;">⚠ خطأ</span>
+        <span x-text="error"></span>
+      </div>
+    </template>
+
+    <!-- Layout: 2 columns on desktop, 1 on mobile -->
+    <div class="grid">
+
+      <!-- Left Column: Chart + Analysis -->
+      <section class="section">
+        <!-- Chart Section -->
+        <div class="card">
+          <div class="card-header">
+            <h2>📊 الرسم البياني (5 دقائق)</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="goldChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Price Action Analysis -->
+        <div class="card" x-show="analysis.price_action">
+          <div class="card-header">
+            <h3>🔍 تحليل حركة السعر</h3>
+          </div>
+          <div class="analysis-grid">
+            <div class="stat">
+              <span class="label">الاتجاه</span>
+              <span class="value" :class="`trend-${analysis.price_action?.trend}`"
+                    x-text="analysis.price_action?.trend === 'up' ? '📈 صاعد' : '📉 هابط'">
+              </span>
+            </div>
+            <div class="stat">
+              <span class="label">التذبذب</span>
+              <span class="value" x-text="`${analysis.price_action?.volatility?.toFixed(2) ?? 0}`"></span>
+            </div>
+            <div class="stat">
+              <span class="label">الأنماط</span>
+              <span class="value" x-text="`${analysis.price_action?.patterns?.length ?? 0} نمط`"></span>
+            </div>
+          </div>
+          <template x-if="analysis.price_action?.patterns?.length">
+            <div class="patterns-list">
+              <template x-for="pattern in analysis.price_action.patterns" :key="pattern.type">
+                <div class="pattern-badge" :class="`pattern-${pattern.type}`">
+                  <span x-text="`${pattern.type}: ${pattern.direction || ''}`"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- Order Flow Analysis -->
+        <div class="card" x-show="analysis.order_flow">
+          <div class="card-header">
+            <h3>💧 تدفق الأوامر</h3>
+          </div>
+          <div class="orderflow-chart">
+            <div class="flow-bar">
+              <div class="buy-pressure" :style="`width: ${buyPercentage}%`" :title="`الشراء: ${analysis.order_flow?.buying_pressure}`"></div>
+              <div class="sell-pressure" :style="`width: ${sellPercentage}%`" :title="`البيع: ${analysis.order_flow?.selling_pressure}`"></div>
+            </div>
+            <div class="flow-labels">
+              <span>شراء: <strong x-text="analysis.order_flow?.buying_pressure?.toLocaleString()"></strong></span>
+              <span>بيع: <strong x-text="analysis.order_flow?.selling_pressure?.toLocaleString()"></strong></span>
+              <span :class="`dominance-${analysis.order_flow?.dominance}`">
+                <strong x-text="analysis.order_flow?.dominance === 'buy' ? '🟢 المشترون' : '🔴 البائعون'"></strong>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Right Column: Signals + Levels -->
+      <section class="section">
+
+        <!-- Trade Signals (Top Priority) -->
+        <div class="card card-signals">
+          <div class="card-header">
+            <h2>🎯 الصفقات المقترحة</h2>
+            <span class="badge badge-count" x-text="`${signals.length} صفقة`"></span>
+          </div>
+
+          <template x-if="signals.length === 0">
+            <div class="empty-state">
+              <span class="empty-icon">⏳</span>
+              <span>لا توجد صفقات في الوقت الحالي</span>
+              <span class="text-muted">في انتظار إشارات واضحة...</span>
+            </div>
+          </template>
+
+          <template x-for="signal in signals" :key="`${signal.type}-${signal.entry}`">
+            <div :class="`signal-card signal-${signal.type.toLowerCase()}`">
+              <div class="signal-header">
+                <span class="signal-type" x-text="signal.type"></span>
+                <span :class="`status-badge status-${signal.status.toLowerCase()}`"
+                      x-text="signal.status"></span>
+              </div>
+
+              <div class="signal-grid">
+                <div class="level">
+                  <span class="label">نقطة الدخول</span>
+                  <span class="price" x-text="`$${signal.entry.toFixed(2)}`"></span>
+                </div>
+                <div class="level">
+                  <span class="label">الهدف 1</span>
+                  <span class="price target" x-text="`$${signal.target_1.toFixed(2)}`"></span>
+                </div>
+                <div class="level">
+                  <span class="label">الهدف 2</span>
+                  <span class="price target" x-text="`$${signal.target_2.toFixed(2)}`"></span>
+                </div>
+                <div class="level">
+                  <span class="label">Stop Loss</span>
+                  <span class="price stop" x-text="`$${signal.stop_loss.toFixed(2)}`"></span>
+                </div>
+              </div>
+
+              <div class="signal-metrics">
+                <div class="metric">
+                  <span class="label">نسبة المخاطرة/المكافأة</span>
+                  <span class="value" :class="`rr-${signal.risk_reward >= 1.5 ? 'good' : 'weak'}`"
+                        x-text="`1 : ${signal.risk_reward.toFixed(2)}`"></span>
+                </div>
+                <div class="metric">
+                  <span class="label">مستوى الثقة</span>
+                  <span class="confidence-bar">
+                    <div class="confidence-fill" :style="`width: ${signal.confidence * 100}%`"></div>
+                  </span>
+                  <span class="percentage" x-text="`${(signal.confidence * 100).toFixed(0)}%`"></span>
+                </div>
+              </div>
+
+              <div class="signal-reason">
+                <span class="reason-icon">ℹ</span>
+                <span x-text="signal.reason"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Support/Resistance Levels -->
+        <div class="card">
+          <div class="card-header">
+            <h3>📍 مستويات الدعم والمقاومة</h3>
+          </div>
+
+          <template x-if="analysis.levels?.resistance?.length">
+            <div class="levels-section">
+              <h4 class="section-title resistance-title">مقاومة 📈</h4>
+              <div class="levels-list">
+                <template x-for="level in analysis.levels.resistance" :key="level.price">
+                  <div class="level-item">
+                    <span class="price" x-text="`$${level.price.toFixed(2)}`"></span>
+                    <span class="strength" :class="`strength-${level.strength}`"
+                          x-text="level.strength === 'vpoc' ? 'VPOC' : 'قوي'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="analysis.levels?.support?.length">
+            <div class="levels-section">
+              <h4 class="section-title support-title">دعم 📉</h4>
+              <div class="levels-list">
+                <template x-for="level in analysis.levels.support" :key="level.price">
+                  <div class="level-item">
+                    <span class="price" x-text="`$${level.price.toFixed(2)}`"></span>
+                    <span class="strength" :class="`strength-${level.strength}`"
+                          x-text="level.strength === 'vpoc' ? 'VPOC' : 'قوي'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Volume Profile -->
+        <div class="card">
+          <div class="card-header">
+            <h3>💧 ملف الحجم (VPOC)</h3>
+          </div>
+
+          <template x-if="analysis.volume_profile?.vpoc?.length">
+            <div class="vpoc-list">
+              <template x-for="(vpoc, idx) in analysis.volume_profile.vpoc" :key="`${vpoc.price}-${idx}`">
+                <div class="vpoc-item">
+                  <div class="vpoc-info">
+                    <span class="price" x-text="`$${vpoc.price.toFixed(2)}`"></span>
+                    <span class="volume" x-text="`${vpoc.volume?.toLocaleString() ?? 0} عقد`"></span>
+                  </div>
+                  <div class="vpoc-bar">
+                    <div class="bar-fill" :style="`width: ${(vpoc.strength / 5) * 100}%`"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+      </section>
+
+    </div>
+
+    <!-- Update Timestamp -->
+    <footer class="footer">
+      <span class="text-muted">آخر تحديث: <span x-text="lastUpdateText"></span></span>
+      <span class="text-muted">تحديث تلقائي كل 30 ثانية</span>
+    </footer>
+
+  </main>
+
+</div>
+
+</body>
+</html>

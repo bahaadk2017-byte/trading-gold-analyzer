@@ -5,4 +5,5 @@ secrets/
 .env
 data/cache/
 data/h1/
+data/m5/
 runs/

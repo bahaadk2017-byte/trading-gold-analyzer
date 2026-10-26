@@ -19,6 +19,7 @@ No POST, no PUT, no DELETE, no execution endpoints.
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ from .agents import list_agents
 from .backtest_reader import equity_curve, get_backtest_run, list_backtest_runs, pair_summary
 from .context_reader import get_context_view
 from .deliberation_reader import get_deliberation, list_deliberations
+from .gold_analyzer import GoldLiveAnalyzer
 from .news_cache import fetch_all, fetch_relevant
 from .reader import get_latest_run, get_run, list_runs
 
@@ -46,11 +48,14 @@ app = FastAPI(
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
+# Initialize Gold Analyzer
+gold_analyzer = GoldLiveAnalyzer()
+
 # Alpine evaluates the local templates with Function(). Inline scripts remain blocked.
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "script-src 'self' https://cdn.jsdelivr.net 'unsafe-eval'; "
-    "style-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
     "frame-src https://www.tradingview.com https://s.tradingview.com; "
     "connect-src 'self'; "
     "img-src 'self' data:; "
@@ -70,6 +75,11 @@ async def security_headers(request: Request, call_next):
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(str(STATIC / "index.html"))
+
+
+@app.get("/gold", include_in_schema=False)
+def gold() -> FileResponse:
+    return FileResponse(str(STATIC / "gold.html"))
 
 
 # ---------- runs --------------------------------------------------------------
@@ -208,3 +218,70 @@ def api_get_backtest(record_id: str) -> JSONResponse:
     trades = bt.get("trades", [])
     bt["equity_curve"] = equity_curve(trades)
     return JSONResponse(bt)
+
+
+# ---------- gold analysis --------------------------------------------------------
+
+
+@app.get("/api/gold/analysis")
+def api_gold_analysis() -> JSONResponse:
+    """Get complete Gold (XAUUSD) analysis with Price Action, Volume Profile, Order Flow."""
+    try:
+        # Return cached analysis directly
+        result = gold_analyzer.cache
+        if result:
+            return JSONResponse(result)
+        # If no cache yet, return empty (initialization hasn't run)
+        return JSONResponse({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "current_price": 0,
+            "bars": [],
+            "price_action": {},
+            "volume_profile": {},
+            "order_flow": {},
+            "levels": {},
+            "signals": [],
+            "technicals": {},
+        })
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.exception("Gold analysis error: %s", exc)
+        return JSONResponse(
+            {"error": str(exc), "status": "error"},
+            status_code=503
+        )
+
+
+@app.get("/api/gold/signals")
+def api_gold_signals() -> JSONResponse:
+    """Get only the trade signals for Gold."""
+    try:
+        result = gold_analyzer.cache or {}
+        return JSONResponse({
+            "timestamp": result.get("timestamp", datetime.utcnow().isoformat() + "Z"),
+            "current_price": result.get("current_price", 0),
+            "signals": result.get("signals", []),
+        })
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            {"error": str(exc), "status": "error"},
+            status_code=503
+        )
+
+
+@app.get("/api/gold/chart-data")
+def api_gold_chart_data() -> JSONResponse:
+    """Get chart data (OHLCV + technicals) for Gold."""
+    try:
+        result = gold_analyzer.cache or {}
+        return JSONResponse({
+            "timestamp": result.get("timestamp", datetime.utcnow().isoformat() + "Z"),
+            "bars": result.get("bars", []),
+            "technicals": result.get("technicals", {}),
+            "levels": result.get("levels", {}),
+        })
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            {"error": str(exc), "status": "error"},
+            status_code=503
+        )

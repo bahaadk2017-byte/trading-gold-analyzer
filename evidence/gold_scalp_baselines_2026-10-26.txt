@@ -1,0 +1,27 @@
+# Simple scalp baselines on GOLDm# M5, frozen export, captured 2026-10-26T13:49:35Z
+# command: .venv/kronos/Scripts/python.exe -I scripts/gold_scalp_baselines.py
+# in-sample only; held-back set NOT used because nothing cleared cost
+
+bars total=98999 in_sample=58410 held_back=40589
+cutoff=2026-04-01 cost_points=36 (spread 32 + 2x2 slippage)
+fingerprint_is=72d003f0f3aa610e fingerprint_oos=12f87f9443d7bb1e
+median_atr14_points=378 cost_as_pct_of_atr=9.5%
+
+With stop/target exits, in points per trade:
+baseline      trades   win%  avg_gross   avg_net  total_net       t        p   max_dd
+mom1           11067 41.4%       +5.3     -30.7    -339582   -4.04   0.0001   357408
+revert1        10930 39.8%      -12.0     -48.0    -524579   -6.40   0.0000   530884
+breakout20      3487 39.2%      -26.0     -62.0    -216317   -4.71   0.0000   220350
+bb_revert       2389 38.7%      -29.0     -65.0    -155271   -4.00   0.0001   157058
+ema_cross       2146 41.3%      +15.6     -20.4     -43733   -1.29   0.1987    55256
+
+Raw direction only, fixed 12-bar hold, no stop or target, non-overlapping samples:
+baseline      samples  avg_gross   vs_cost       t        p
+mom1             4447      +32.6      -3.4   +1.43   0.1533
+revert1          4447      -32.6     -68.6   -1.43   0.1533
+breakout20        479      +38.4      +2.4   +0.47   0.6413
+bb_revert         308     -123.8    -159.8   -1.05   0.2955
+ema_cross         172      +29.1      -6.9   +0.26   0.7980
+
+Five rules were tested, so the best in-sample p-value needs a Bonferroni threshold of 0.010, not 0.05.
+Cost to clear per round trip: 36 points (0.36 USD per ounce).

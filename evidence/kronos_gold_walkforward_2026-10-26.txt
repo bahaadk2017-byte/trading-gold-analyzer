@@ -1,0 +1,24 @@
+# Kronos-small vs naive persistence on GOLDm# (XM Global), captured 2026-10-26T13:41:22Z
+# command: .venv/kronos/Scripts/python.exe -I scripts/gold_kronos_walkforward.py --count 300 --timeframe <TF>
+
+symbol=GOLDm# timeframe=M5 bars_scored=300
+window=2026-10-23T12:40:00+00:00 .. 2026-10-26T13:35:00+00:00
+kronos_mae_usd=2.271
+naive_mae_usd=1.991
+skill_vs_naive=-14.1%  (positive = Kronos better)
+direction_hits=148/297 = 49.8%  flat_excluded=3
+
+symbol=GOLDm# timeframe=M15 bars_scored=300
+window=2026-10-21T08:30:00+00:00 .. 2026-10-26T13:15:00+00:00
+kronos_mae_usd=4.282
+naive_mae_usd=3.730
+skill_vs_naive=-14.8%  (positive = Kronos better)
+direction_hits=146/299 = 48.8%  flat_excluded=1
+
+symbol=GOLDm# timeframe=H1 bars_scored=300
+window=2026-10-07T13:00:00+00:00 .. 2026-10-26T12:00:00+00:00
+kronos_mae_usd=7.467
+naive_mae_usd=6.434
+skill_vs_naive=-16.1%  (positive = Kronos better)
+direction_hits=136/300 = 45.3%  flat_excluded=0
+
