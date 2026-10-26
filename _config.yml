@@ -1,0 +1,10 @@
+title: Gold Live Analyzer
+description: Real-time XAUUSD analysis with price action and order flow
+theme: null
+plugins: []
+include:
+  - .nojekyll
+
+# Disable Jekyll processing
+markdown: kramdown
+permalink: pretty
