@@ -51,7 +51,7 @@ CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "script-src 'self' https://cdn.jsdelivr.net 'unsafe-eval'; "
     "style-src 'self'; "
-    "frame-src https://s.tradingview.com; "
+    "frame-src https://www.tradingview.com https://s.tradingview.com; "
     "connect-src 'self'; "
     "img-src 'self' data:; "
     "base-uri 'self'; object-src 'none'; frame-ancestors 'self'"

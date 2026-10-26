@@ -12,7 +12,11 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+_this_file = Path(__file__).resolve()
+ROOT = _this_file.parents[1]
+# Normalize Windows path (avoid Bash double-path issue)
+if str(ROOT).startswith(r'C:\c\\'):
+    ROOT = Path(str(ROOT).replace(r'C:\c\\', 'C:\\'))
 DELIBERATIONS_DIR = ROOT / "runs" / "deliberations"
 
 # Deliberation filenames: delib_*.json
